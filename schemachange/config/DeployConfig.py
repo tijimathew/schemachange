@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import dataclasses
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from schemachange.config.param_namespace import SNOWFLAKE_PARAMS, SCHEMACHANGE_PARAMS
 from schemachange.config.BaseConfig import BaseConfig
 from schemachange.config.ChangeHistoryTable import ChangeHistoryTable
 from schemachange.config.utils import (
@@ -12,27 +13,19 @@ from schemachange.config.utils import (
 )
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class DeployConfig(BaseConfig):
     subcommand: Literal["deploy"] = "deploy"
-    snowflake_account: str | None = (
-        None  # TODO: Remove when connections.toml is enforced
-    )
-    snowflake_user: str | None = None  # TODO: Remove when connections.toml is enforced
-    snowflake_role: str | None = None  # TODO: Remove when connections.toml is enforced
-    snowflake_warehouse: str | None = (
-        None  # TODO: Remove when connections.toml is enforced
-    )
-    snowflake_database: str | None = (
-        None  # TODO: Remove when connections.toml is enforced
-    )
-    snowflake_schema: str | None = (
-        None  # TODO: Remove when connections.toml is enforced
-    )
+    snowflake_account: str = field( default_factory=lambda: SNOWFLAKE_PARAMS.defaults["account"])
+    snowflake_user: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["user"])
+    snowflake_role: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["role"])
+    snowflake_warehouse: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["warehouse"])
+    snowflake_database: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["database"])
+    snowflake_schema: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["schema"])
     connections_file_path: Path | None = None
     connection_name: str | None = None
     # TODO: Turn change_history_table into three arguments. There's no need to parse it from a string
-    change_history_table: ChangeHistoryTable | None = dataclasses.field(
+    change_history_table: ChangeHistoryTable | None = field(
         default_factory=ChangeHistoryTable
     )
     create_change_history_table: bool = False
@@ -50,7 +43,6 @@ class DeployConfig(BaseConfig):
         if "subcommand" in kwargs:
             kwargs.pop("subcommand")
 
-        # TODO: Remove when connections.toml is enforced
         for sf_input in [
             "snowflake_role",
             "snowflake_warehouse",

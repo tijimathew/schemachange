@@ -5,6 +5,7 @@ from typing import Union, Optional
 
 import structlog
 
+from schemachange.config.param_namespace import SNOWFLAKE_PARAMS, SCHEMACHANGE_PARAMS
 from schemachange.config.DeployConfig import DeployConfig
 from schemachange.config.RenderConfig import RenderConfig
 from schemachange.config.parse_cli_args import parse_cli_args
@@ -89,22 +90,29 @@ def get_merged_config(
     }
 
     # override the YAML config with the CLI configuration
-    kwargs = {
-        "config_file_path": config_file_path,
-        "config_vars": config_vars,
-        **{k: v for k, v in yaml_kwargs.items() if v is not None},
-        **{k: v for k, v in cli_kwargs.items() if v is not None},
-    }
-    if connections_file_path is not None:
-        kwargs["connections_file_path"] = connections_file_path
-    if connection_name is not None:
-        kwargs["connection_name"] = connection_name
+    merged_kwargs = {}
+    # Start with schemachange defaults
+    merged_kwargs.update(SCHEMACHANGE_PARAMS.get_defaults())
+    # Add snowflake defaults (if needed for your config objects)
+    merged_kwargs.update(SNOWFLAKE_PARAMS.get_defaults())
+    # Overlay YAML config
+    merged_kwargs.update({k: v for k, v in yaml_kwargs.items() if v is not None})
+    # Overlay CLI config
+    merged_kwargs.update({k: v for k, v in cli_kwargs.items() if v is not None})
 
-    logger.debug("final kwargs", **kwargs)
+    # Always set these explicitly
+    merged_kwargs["config_file_path"] = config_file_path
+    merged_kwargs["config_vars"] = config_vars
+    if connections_file_path is not None:
+        merged_kwargs["connections_file_path"] = connections_file_path
+    if connection_name is not None:
+        merged_kwargs["connection_name"] = connection_name
+
+    logger.debug("final kwargs", **merged_kwargs)
 
     if cli_kwargs["subcommand"] == "deploy":
-        return DeployConfig.factory(**kwargs)
+        return DeployConfig.factory(**merged_kwargs)
     elif cli_kwargs["subcommand"] == "render":
-        return RenderConfig.factory(**kwargs)
+        return RenderConfig.factory(**merged_kwargs)
     else:
         raise Exception(f"unhandled subcommand: {cli_kwargs['subcommand'] }")
