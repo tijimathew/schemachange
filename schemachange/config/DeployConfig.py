@@ -16,12 +16,12 @@ from schemachange.config.utils import (
 @dataclass(frozen=True)
 class DeployConfig(BaseConfig):
     subcommand: Literal["deploy"] = "deploy"
-    snowflake_account: str = field( default_factory=lambda: SNOWFLAKE_PARAMS.defaults["account"])
-    snowflake_user: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["user"])
-    snowflake_role: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["role"])
-    snowflake_warehouse: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["warehouse"])
-    snowflake_database: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["database"])
-    snowflake_schema: str | None = field(default_factory=lambda: SNOWFLAKE_PARAMS.defaults["schema"])
+    snowflake_account: str | None = None
+    snowflake_user: str | None = None
+    snowflake_role: str | None = None
+    snowflake_warehouse: str | None = None
+    snowflake_database: str | None = None
+    snowflake_schema: str | None = None
     connections_file_path: Path | None = None
     connection_name: str | None = None
     # TODO: Turn change_history_table into three arguments. There's no need to parse it from a string

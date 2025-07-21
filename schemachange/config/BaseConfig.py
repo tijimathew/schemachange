@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import dataclasses
+from dataclasses import dataclass, field
 import logging
 from abc import ABC
 from pathlib import Path
@@ -18,15 +18,15 @@ logger = structlog.getLogger(__name__)
 T = TypeVar("T", bound="BaseConfig")
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class BaseConfig(ABC):
     subcommand: Literal["deploy", "render"]
     config_version: int | None = None
     config_file_path: Path | None = None
     root_folder: Path | None = Path(".")
     modules_folder: Path | None = None
-    config_vars: dict = dataclasses.field(default_factory=dict)
-    secrets: set[str] = dataclasses.field(default_factory=set)
+    config_vars: dict = field(default_factory=dict)
+    secrets: set[str] = field(default_factory=set)
     log_level: int = logging.INFO
 
     @classmethod

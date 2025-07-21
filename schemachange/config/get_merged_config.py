@@ -92,11 +92,13 @@ def get_merged_config(
     # override the YAML config with the CLI configuration
     merged_kwargs = {}
     # Start with schemachange defaults
-    merged_kwargs.update(SCHEMACHANGE_PARAMS.get_defaults())
+    #merged_kwargs.update(SCHEMACHANGE_PARAMS.get_defaults())
     # Add snowflake defaults (if needed for your config objects)
-    merged_kwargs.update(SNOWFLAKE_PARAMS.get_defaults())
+    #merged_kwargs.update(SNOWFLAKE_PARAMS.get_defaults())
     # Overlay YAML config
     merged_kwargs.update({k: v for k, v in yaml_kwargs.items() if v is not None})
+    # TODO: Add Overlay for Environment variables
+    # merged_kwargs.update({k: v for k, v in os.environ.items() if k in SCHEMACHANGE_PARAMS.params}) ??
     # Overlay CLI config
     merged_kwargs.update({k: v for k, v in cli_kwargs.items() if v is not None})
 

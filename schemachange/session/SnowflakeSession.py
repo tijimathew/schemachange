@@ -5,26 +5,23 @@ import time
 from collections import defaultdict
 from textwrap import dedent, indent
 
-import snowflake.connector
+from snowflake.connector import SnowflakeConnection
 import structlog
 
+from schemachange.config.param_namespace import SNOWFLAKE_PARAMS, SCHEMACHANGE_PARAMS
 from schemachange.config.ChangeHistoryTable import ChangeHistoryTable
 from schemachange.config.utils import get_snowflake_identifier_string
 from schemachange.session.Script import VersionedScript, RepeatableScript, AlwaysScript
 
 
-class SnowflakeSession:
-    account: str
-    user: str | None  # TODO: user: str when connections.toml is enforced
-    role: str | None  # TODO: role: str when connections.toml is enforced
-    warehouse: str | None  # TODO: warehouse: str when connections.toml is enforced
-    database: str | None  # TODO: database: str when connections.toml is enforced
-    schema: str | None
+class SnowflakeSession(SnowflakeConnection):
+    """SnowflakeSession manages the connection to Snowflake and provides methods
+    for executing queries, managing change history, and applying change scripts.
+    """    
     autocommit: bool
     change_history_table: ChangeHistoryTable
     logger: structlog.BoundLogger
     session_parameters: dict[str, str]
-    conn: snowflake.connector.SnowflakeConnection
 
     """
     Manages Snowflake Interactions and authentication
@@ -36,69 +33,57 @@ class SnowflakeSession:
         application: str,
         change_history_table: ChangeHistoryTable,
         logger: structlog.BoundLogger,
-        connection_name: str | None = None,
-        connections_file_path: str | None = None,
-        account: str | None = None,  # TODO: Remove when connections.toml is enforced
-        user: str | None = None,  # TODO: Remove when connections.toml is enforced
-        role: str | None = None,  # TODO: Remove when connections.toml is enforced
-        warehouse: str | None = None,  # TODO: Remove when connections.toml is enforced
-        database: str | None = None,  # TODO: Remove when connections.toml is enforced
-        schema: str | None = None,  # TODO: Remove when connections.toml is enforced
         query_tag: str | None = None,
         autocommit: bool = False,
         **kwargs,  # TODO: Remove when connections.toml is enforced
     ):
+        connect_kwargs = kwargs.copy()
         self.change_history_table = change_history_table
         self.autocommit = autocommit
         self.logger = logger
+        if 'session_parameters' not in connect_kwargs:
+            connect_kwargs['session_parameters'] = {}
+        
+        if 'QUERY_TAG' not in connect_kwargs['session_parameters']:
+            connect_kwargs['session_parameters']['QUERY_TAG'] = f"schemachange {schemachange_version}"
+        else:
+            connect_kwargs['session_parameters']['QUERY_TAG'] = f"schemachange {schemachange_version};{connect_kwargs['session_parameters']['QUERY_TAG']}"
+            if query_tag:
+                connect_kwargs['session_parameters']["QUERY_TAG"] += f";{query_tag}"
 
-        self.session_parameters = {"QUERY_TAG": f"schemachange {schemachange_version}"}
-        if query_tag:
-            self.session_parameters["QUERY_TAG"] += f";{query_tag}"
-
-        connect_kwargs = {
-            "account": account,  # TODO: Remove when connections.toml is enforced
-            "user": user,  # TODO: Remove when connections.toml is enforced
-            "database": database,  # TODO: Remove when connections.toml is enforced
-            "schema": schema,  # TODO: Remove when connections.toml is enforced
-            "role": role,  # TODO: Remove when connections.toml is enforced
-            "warehouse": warehouse,  # TODO: Remove when connections.toml is enforced
-            "private_key_file": kwargs.get(
-                "private_key_path"
-            ),  # TODO: Remove when connections.toml is enforced
-            "token": kwargs.get(
-                "oauth_token"
-            ),  # TODO: Remove when connections.toml is enforced
-            "password": kwargs.get(
-                "password"
-            ),  # TODO: Remove when connections.toml is enforced
-            "authenticator": kwargs.get(
-                "authenticator"
-            ),  # TODO: Remove when connections.toml is enforced
-            "connection_name": connection_name,
-            "connections_file_path": connections_file_path,
-            "application": application,
-            "session_parameters": self.session_parameters,
-        }
+        # remove any keys that are not set by environment variables, config files or CLI args to use connect defaults.
         connect_kwargs = {k: v for k, v in connect_kwargs.items() if v is not None}
-        self.logger.debug("snowflake.connector.connect kwargs", **connect_kwargs)
-        self.con = snowflake.connector.connect(**connect_kwargs)
-        print(f"Current session ID: {self.con.session_id}")
-        self.account = self.con.account
-        self.user = get_snowflake_identifier_string(self.con.user, "user")
-        self.role = get_snowflake_identifier_string(self.con.role, "role")
-        self.warehouse = get_snowflake_identifier_string(
-            self.con.warehouse, "warehouse"
-        )
-        self.database = get_snowflake_identifier_string(self.con.database, "database")
-        self.schema = get_snowflake_identifier_string(self.con.schema, "schema")
+        masked_kwargs = ['password', 'token', 'private_key', 'private_key_file_pwd', 'passcode', 'oauth_client_id', 'oauth_client_secret']
+        
+        sanitized_connect_kwargs = {}
+        for k, v in connect_kwargs.items():
+            if k in masked_kwargs:
+                sanitized_connect_kwargs[k] = "********"
+            else:
+                sanitized_connect_kwargs[k] = v
+
+        for k in sanitized_connect_kwargs.keys():
+            if k not in SNOWFLAKE_PARAMS.params:
+                self.logger.warning(
+                    f"Unknown parameter {k} in Snowflake connection kwargs. "
+                    "Please check your connections.toml or CLI arguments."
+                )
+            elif not SNOWFLAKE_PARAMS.is_supported(k, self.connector_version):
+                self.logger.warning(
+                    f"Parameter {k} is not supported for connector version {self.connector_version}. "
+                    "Please check your connections.toml or CLI arguments."
+                )
+
+
+        self.logger.debug("snowflake.connector.connect kwargs", **sanitized_connect_kwargs)
+        super().__init__(**connect_kwargs)
+        print(f"Current session ID: {self.session_id}")
 
         if not self.autocommit:
-            self.con.autocommit(False)
+            self.autocommit(False)
 
     def __del__(self):
-        if hasattr(self, "con"):
-            self.con.close()
+        self.close()
 
     def execute_snowflake_query(self, query: str, logger: structlog.BoundLogger):
         logger.debug(
@@ -106,13 +91,13 @@ class SnowflakeSession:
             query=indent(query, prefix="\t"),
         )
         try:
-            res = self.con.execute_string(query)
+            res = self.execute_string(query)
             if not self.autocommit:
-                self.con.commit()
+                self.commit()
             return res
         except Exception as e:
             if not self.autocommit:
-                self.con.rollback()
+                self.rollback()
             raise e
 
     def fetch_change_history_metadata(self) -> dict:
